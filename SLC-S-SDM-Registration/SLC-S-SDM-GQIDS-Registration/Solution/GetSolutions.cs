@@ -79,7 +79,7 @@ namespace Solution
 			_dms = args.DMS;
 			_logger = args.Logger;
 			_columns = new Columns();
-			_sdmRegistrar = GqiExtensions.GetSdmRegistrar(args);
+			_sdmRegistrar = args.GetSdmRegistrar();
 			return default;
 		}
 

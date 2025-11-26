@@ -53,6 +53,7 @@ namespace Solution
 {
 	using System.Linq;
 	using Skyline.DataMiner.Analytics.GenericInterface;
+	using Skyline.DataMiner.Analytics.GenericInterface.Operators;
 	using Skyline.DataMiner.Net.Messages.SLDataGateway;
 	using Skyline.DataMiner.SDM;
 	using Skyline.DataMiner.SDM.Registration;
@@ -61,10 +62,10 @@ namespace Solution
 	using SLDataGateway.API.Querying;
 
 	[GQIMetaData(Name = "Registration.Get Solution")]
-	public sealed class GetSolution : IGQIDataSource
-		, IGQIOnInit
+	public sealed class GetSolution : IGQIOnInit
 		, IGQIUpdateable
 		, IGQIOnPrepareFetch
+		, IGQIOptimizableDataSource
 	{
 		private GQIDMS _dms;
 		private Columns _columns;
@@ -72,6 +73,7 @@ namespace Solution
 		private IGQIUpdater _updater;
 		private IGQILogger _logger;
 
+		private IGQISortOperator _sortOperator;
 		private GQIPageEnumerator _pageEnumerator;
 
 		public OnInitOutputArgs OnInit(OnInitInputArgs args)
@@ -105,6 +107,11 @@ namespace Solution
 		{
 			var filter = new TRUEFilterElement<SolutionRegistration>().ToQuery();
 
+			foreach (var sortField in _sortOperator?.Fields ?? Enumerable.Empty<IGQISortField>())
+			{
+				filter = _columns.ApplySorting(filter, sortField);
+			}
+
 			_pageEnumerator = new GQIPageEnumerator(_sdmRegistrar.Solutions
 				.ReadPaged(filter, 100).SelectMany(page => page.Select(CreateGQIRow)));
 
@@ -116,6 +123,17 @@ namespace Solution
 			_sdmRegistrar.Solutions.OnCreated -= SolutionCreated;
 			_sdmRegistrar.Solutions.OnDeleted -= SolutionDeleted;
 			_sdmRegistrar.Solutions.OnUpdated -= SolutionUpdated;
+		}
+
+		public IGQIQueryNode Optimize(IGQIDataSourceNode currentNode, IGQICoreOperator nextOperator)
+		{
+			if (nextOperator.IsSortOperator(out var sortOperator))
+			{
+				_sortOperator = sortOperator;
+				return currentNode;
+			}
+
+			return currentNode.Append(nextOperator);
 		}
 
 		private GQIRow CreateGQIRow(SolutionRegistration solution)

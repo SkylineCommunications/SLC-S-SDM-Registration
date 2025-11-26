@@ -53,6 +53,7 @@ namespace Solution
 {
 	using System.Linq;
 	using Skyline.DataMiner.Analytics.GenericInterface;
+	using Skyline.DataMiner.Analytics.GenericInterface.Operators;
 	using Skyline.DataMiner.Net.Messages.SLDataGateway;
 	using Skyline.DataMiner.SDM;
 	using Skyline.DataMiner.SDM.Registration;
@@ -61,10 +62,10 @@ namespace Solution
 	using SLDataGateway.API.Querying;
 
 	[GQIMetaData(Name = "Registration.Get Models")]
-	public sealed class GetModels : IGQIDataSource
-		, IGQIOnInit
+	public sealed class GetModels : IGQIOnInit
 		, IGQIUpdateable
 		, IGQIOnPrepareFetch
+		, IGQIOptimizableDataSource
 	{
 		private GQIDMS _dms;
 		private Columns _columns;
@@ -73,6 +74,7 @@ namespace Solution
 		private IGQILogger _logger;
 
 		private GQIPageEnumerator _pageEnumerator;
+		private IGQISortOperator _sortOperator;
 
 		public OnInitOutputArgs OnInit(OnInitInputArgs args)
 		{
@@ -91,6 +93,11 @@ namespace Solution
 		public OnPrepareFetchOutputArgs OnPrepareFetch(OnPrepareFetchInputArgs args)
 		{
 			var filter = new TRUEFilterElement<ModelRegistration>().ToQuery();
+
+			foreach (var sortField in _sortOperator?.Fields ?? Enumerable.Empty<IGQISortField>())
+			{
+				filter = _columns.ApplySorting(filter, sortField);
+			}
 
 			_pageEnumerator = new GQIPageEnumerator(_sdmRegistrar.Models
 				.ReadPaged(filter, 100).SelectMany(page => page.Select(CreateGQIRow)));
@@ -116,6 +123,17 @@ namespace Solution
 			_sdmRegistrar.Models.OnCreated -= ModelCreated;
 			_sdmRegistrar.Models.OnDeleted -= ModelDeleted;
 			_sdmRegistrar.Models.OnUpdated -= ModelUpdated;
+		}
+
+		public IGQIQueryNode Optimize(IGQIDataSourceNode currentNode, IGQICoreOperator nextOperator)
+		{
+			if (nextOperator.IsSortOperator(out var sortOperator))
+			{
+				_sortOperator = sortOperator;
+				return currentNode;
+			}
+
+			return currentNode.Append(nextOperator);
 		}
 
 		private GQIRow CreateGQIRow(ModelRegistration model)
